@@ -4,6 +4,7 @@ using Business.Constants;
 using Business.ValidationRules.FluentValidation;
 using Core.Aspects.Autofac.Validation;
 using Core.CrossCuttingConcerns.Validation;
+using Core.Utilities.Business;
 using Core.Utilities.Results;
 using DataAccess.Abstract;
 using DataAccess.Concrete.InMemory;
@@ -20,10 +21,12 @@ namespace Business.Concrete
     public class ProductManager : IProductService
     {
         IProductDal _productDal;
+        ICategoryService _categorService;
 
-        public ProductManager(IProductDal productDal)
+        public ProductManager(IProductDal productDal, ICategoryService categoryService)
         {
             _productDal = productDal;
+            _categorService = categoryService;
         }
 
         public IDataResult<List<Product>> GetAllByCategoryId(int id)
@@ -53,14 +56,56 @@ namespace Business.Concrete
         [ValidationAspect(typeof(ProductValidator))]
         public IResult Add(Product product)
         {
-          
+           IResult result = BusinessRules.Run(CheckIfProductCountOfCategoryCorrect(product.CategoryId), 
+               CheckIfProductNameIsExists(product.ProductName), CheckIfCategoryLimitExceeded());
+
+            if (result!=null)
+            {
+                return result;
+            }
+
             _productDal.Add(product);
             return new SuccessResult(Messages.ProductAdded);
+           
+
+      
+          
+            
         }
 
         public IDataResult<Product> GetById(int ProductId)
         {
             return new SuccessDataResult<Product>(_productDal.Get(p => p.ProductId == ProductId));
         }
+
+        private IResult CheckIfProductCountOfCategoryCorrect(int categoryId)
+        {
+            var result = _productDal.GetAll(p => p.CategoryId == categoryId).Count;
+            if (result>= 10)
+            {
+                return new ErrorResult(Messages.ProductCountOfCategoryError);
+            }
+            return new SuccessResult();
+
+        }
+        private IResult CheckIfProductNameIsExists(string productName)
+        {
+            var result = _productDal.GetAll(p => p.ProductName == productName).Any();
+            if(result)
+            {
+                return new ErrorResult(Messages.ProductNameAlreadyExists);
+            }
+            return new SuccessResult();
+        }
+        private IResult CheckIfCategoryLimitExceeded()
+        {
+            var result = _categorService.GetAll();
+            if (result.Data.Count > 15)
+            {
+                return new ErrorResult(Messages.CategoryLimitExceeded);
+            }
+            return new SuccessResult();
+        }
+      
     }
 }
